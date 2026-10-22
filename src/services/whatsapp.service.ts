@@ -105,37 +105,16 @@ export const whatsappService = {
 
   async sendBill(payload: SendBillPayload): Promise<SendBillResponse> {
     const formattedMessage = this.formatBillMessage(payload);
-
-    try {
-      // First try dedicated send-bill endpoint
-      const response = await api.post<{ messageId: string }>(
-        '/whatsapp/send-bill',
-        {
-          ...payload,
-          notes: payload.notes,
-        }
-      );
-      return {
-        messageId: response.data.messageId,
-        formattedMessage,
-      };
-    } catch (err: unknown) {
-      const errorObj = err as { response?: { status?: number } };
-      // Fallback seamlessly to send-text
-      if (errorObj.response?.status === 404 || errorObj.response?.status === 400) {
-        const response = await api.post<{ messageId: string }>(
-          '/whatsapp/send-text',
-          {
-            to: payload.to,
-            message: formattedMessage,
-          }
-        );
-        return {
-          messageId: response.data.messageId,
-          formattedMessage,
-        };
-      }
-      throw err;
-    }
+    const response = await api.post<{
+      messageId: string;
+      formattedMessage: string;
+    }>('/whatsapp/send-bill', {
+      ...payload,
+      useTemplate: true,
+    });
+    return {
+      messageId: response.data.messageId,
+      formattedMessage: response.data.formattedMessage || formattedMessage,
+    };
   },
 };
