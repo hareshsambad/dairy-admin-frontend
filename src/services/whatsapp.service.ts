@@ -16,6 +16,8 @@ export interface SendBillPayload {
   monthlyAmount?: number;
   previousDue?: number;
   totalAmount?: number;
+  distributorName?: string;
+  distributorPhone?: string;
   notes?: string;
   customMessage?: string;
 }
@@ -37,20 +39,28 @@ export const whatsappService = {
     const liters = Number(payload.liters) || 0;
     const rate = Number(payload.ratePerLiter) || 0;
     const todayAmount = payload.totalAmount !== undefined ? Number(payload.totalAmount) : liters * rate;
+    const distName = payload.distributorName || 'Haresh Sambad';
+    const distPhone = payload.distributorPhone || '+91 9104152524';
 
     const lines = [
-      `🥛 *DAILY MILK DELIVERY UPDATE* 🥛`,
+      `🥛 *Milk Billing & Delivery Update* 🥛`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `👤 *Customer:* ${payload.customerName}`,
-      `📅 *Date:* ${today}`,
-      payload.deliverySession ? `⏰ *Session:* ${payload.deliverySession}` : null,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `📦 *Today's Quantity:* ${liters.toFixed(1)} Liters`,
-      `💰 *Rate:* ₹${rate.toFixed(2)} / Liter`,
-      `💵 *Today's Total:* ₹${todayAmount.toFixed(2)}`,
-      payload.notes ? `\n📝 *Note:* ${payload.notes}` : null,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `🙏 *Thank you for choosing our dairy!*`,
+      `Hello ${payload.customerName},`,
+      ``,
+      `Your milk bill update for ${today} has been generated.`,
+      ``,
+      `Details:`,
+      `• Quantity: ${liters.toFixed(1)} L`,
+      `• Rate: ₹${rate.toFixed(2)}/L`,
+      `• Total Amount Due: ₹${todayAmount.toFixed(2)}`,
+      payload.notes ? `• Note: ${payload.notes}` : null,
+      ``,
+      `Please review your delivery details. For any queries or corrections, please contact your distributor:`,
+      ``,
+      `Distributor Name: ${distName}`,
+      `Contact Number: ${distPhone}`,
+      `They will be happy to assist you.`,
+      `Dairy Desk Management`,
     ].filter(Boolean) as string[];
 
     return lines.join('\n');
@@ -72,24 +82,30 @@ export const whatsappService = {
         : liters * rate;
     const prevDue = Number(payload.previousDue) || 0;
     const netPayable = monthlyTotal + prevDue;
+    const distName = payload.distributorName || 'Haresh Sambad';
+    const distPhone = payload.distributorPhone || '+91 9104152524';
 
     const lines = [
-      `🧾 *MONTHLY MILK BILLING STATEMENT* 🧾`,
+      `🧾 *Milk Billing & Delivery Update* 🧾`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `👤 *Customer:* ${payload.customerName}`,
-      `📅 *Billing Month:* ${month}`,
-      `🗓️ *Total Delivery Days:* ${days} Days`,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `🥛 *Total Milk Delivered:* ${liters.toFixed(1)} Liters`,
-      `💰 *Rate per Liter:* ₹${rate.toFixed(2)} / Liter`,
-      `💵 *Monthly Milk Charge:* ₹${monthlyTotal.toFixed(2)}`,
-      prevDue > 0 ? `⚠️ *Previous Balance Due:* ₹${prevDue.toFixed(2)}` : null,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `💳 *NET TOTAL PAYABLE:* ₹${netPayable.toFixed(2)}`,
-      payload.notes ? `\n📝 *Note:* ${payload.notes}` : null,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `📲 *Please complete payment by cash or UPI.*`,
-      `🙏 *Thank you for your business!*`,
+      `Hello ${payload.customerName},`,
+      ``,
+      `Your milk bill update for ${month} (${days} Days) has been generated.`,
+      ``,
+      `Details:`,
+      `• Total Quantity: ${liters.toFixed(1)} L`,
+      `• Rate: ₹${rate.toFixed(2)}/L`,
+      `• Monthly Charge: ₹${monthlyTotal.toFixed(2)}`,
+      prevDue > 0 ? `• Previous Due: ₹${prevDue.toFixed(2)}` : null,
+      `• Total Amount Due: ₹${netPayable.toFixed(2)}`,
+      payload.notes ? `• Note: ${payload.notes}` : null,
+      ``,
+      `Please review your delivery details. For any queries or corrections, please contact your distributor:`,
+      ``,
+      `Distributor Name: ${distName}`,
+      `Contact Number: ${distPhone}`,
+      `They will be happy to assist you.`,
+      `Dairy Desk Management`,
     ].filter(Boolean) as string[];
 
     return lines.join('\n');
@@ -101,6 +117,11 @@ export const whatsappService = {
       return this.formatMonthlyMessage(payload);
     }
     return this.formatDailyMessage(payload);
+  },
+
+  getWhatsAppUrl(phone: string, message: string): string {
+    const cleanPhone = phone.replace(/[^\d]/g, '');
+    return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
   },
 
   async sendBill(payload: SendBillPayload): Promise<SendBillResponse> {
