@@ -132,6 +132,7 @@ export const whatsappService = {
     }>('/whatsapp/send-bill', {
       ...payload,
       useTemplate: true,
+      templateName: 'dairy_milk_bill_update',
     });
     return {
       messageId: response.data.messageId,
