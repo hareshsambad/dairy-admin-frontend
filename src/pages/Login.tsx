@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
-import { Milk, Eye, EyeOff, Loader2 } from 'lucide-react'
+import api from '@/services/api'
+import { Loader2, X } from 'lucide-react'
 
 export function LoginPage() {
   const { login, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -13,10 +14,20 @@ export function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Forgot password dialog
+  const [forgotModalOpen, setForgotModalOpen] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null)
+  const [forgotError, setForgotError] = useState<string | null>(null)
+
   if (authLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className="flex h-screen items-center justify-center bg-[#F8F7FB]">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-[#4768E8]" />
+          <p className="text-xs text-slate-500">Checking credentials...</p>
+        </div>
       </div>
     )
   }
@@ -37,148 +48,249 @@ export function LoginPage() {
     try {
       await login({ email: email.trim(), password })
       navigate('/distributors', { replace: true })
-    } catch (err) {
-      if (err instanceof Error) {
+    } catch (err: any) {
+      if (err?.response?.data?.message) {
+        setError(
+          Array.isArray(err.response.data.message)
+            ? err.response.data.message.join(', ')
+            : err.response.data.message
+        )
+      } else if (err instanceof Error) {
         setError(err.message)
       } else {
-        setError('An unexpected error occurred. Please try again.')
+        setError('Invalid email or password. Please try again.')
       }
     } finally {
       setIsSubmitting(false)
     }
   }
 
+  const handleForgotPassword = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!forgotEmail.trim()) return
+
+    setForgotLoading(true)
+    setForgotError(null)
+    setForgotMessage(null)
+
+    try {
+      const res = await api.post('/auth/forgot-password', {
+        email: forgotEmail.trim(),
+      })
+      setForgotMessage(
+        res.data?.message || 'If that email is registered, a reset code was sent.'
+      )
+    } catch (err: any) {
+      setForgotError(
+        err?.response?.data?.message || 'Failed to send reset code. Please try again.'
+      )
+    } finally {
+      setForgotLoading(false)
+    }
+  }
+
   return (
-    <div className="flex min-h-screen">
-      {/* Left panel — Branding */}
-      <div className="hidden w-1/2 flex-col justify-between bg-primary p-10 lg:flex">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20">
-            <Milk className="h-5 w-5 text-white" />
+    <div className="flex min-h-screen bg-[#F8F7FB]">
+      {/* Left panel — Dark Navy SaaS Hero */}
+      <div className="hidden w-1/2 flex-col justify-between bg-[#192342] p-12 lg:flex xl:p-16">
+        {/* Brand */}
+        <div className="flex items-center gap-3.5">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#4768E8] text-xl font-bold text-white shadow-md">
+            D
           </div>
-          <span className="text-lg font-semibold text-white">
-            Milk Management
-          </span>
+          <div>
+            <h1 className="text-lg font-bold text-white leading-tight">
+              Distributor Admin
+            </h1>
+            <p className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
+              POWER YOUR DISTRIBUTION NETWORK
+            </p>
+          </div>
         </div>
 
-        <div className="max-w-md">
-          <h2 className="text-3xl font-bold leading-tight text-white">
-            Manage your dairy business, effortlessly.
+        {/* Center message */}
+        <div className="max-w-lg">
+          <h2 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl leading-[1.15]">
+            Run your distributor business with clarity.
           </h2>
-          <p className="mt-3 text-sm leading-relaxed text-white/70">
-            Track distributors, manage customers, and monitor billing — all from
-            one powerful admin dashboard.
+          <p className="mt-4 text-base text-slate-300 leading-relaxed max-w-md">
+            A modern command center for customers, billing, and collections — all in one place.
           </p>
+          <div className="mt-6">
+            <span className="inline-block rounded-full bg-white px-4 py-1.5 text-xs font-bold tracking-wider text-[#4768E8] shadow-sm uppercase">
+              PRODUCTION-READY SAAS
+            </span>
+          </div>
         </div>
 
-        <p className="text-xs text-white/40">
-          © {new Date().getFullYear()} Milk Management. All rights reserved.
+        {/* Footer */}
+        <p className="text-xs text-slate-400">
+          © {new Date().getFullYear()} Distributor Admin · Multi-Tenant Dairy SaaS Platform
         </p>
       </div>
 
-      {/* Right panel — Login form */}
-      <div className="flex w-full flex-col items-center justify-center px-6 lg:w-1/2">
-        {/* Mobile branding */}
-        <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <Milk className="h-4.5 w-4.5 text-white" />
+      {/* Right panel — Login Form */}
+      <div className="flex w-full flex-col items-center justify-center p-6 lg:w-1/2">
+        <div className="w-full max-w-md rounded-3xl border border-[#EAE9F2] bg-white p-8 sm:p-10 shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+          {/* Mobile brand */}
+          <div className="mb-6 flex items-center gap-3 lg:hidden">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#4768E8] text-lg font-bold text-white">
+              D
+            </div>
+            <div>
+              <div className="text-base font-bold text-[#192342]">
+                Distributor Admin
+              </div>
+              <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                POWER YOUR DISTRIBUTION NETWORK
+              </div>
+            </div>
           </div>
-          <span className="text-base font-semibold text-foreground">
-            Milk Management
-          </span>
-        </div>
 
-        <div className="w-full max-w-sm">
-          <div className="mb-6 text-center lg:text-left">
-            <h1 className="text-xl font-semibold text-foreground">
-              Welcome back
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Sign in to the internal admin dashboard
+          <div>
+            <h2 className="text-2xl font-bold text-[#192342]">Welcome back</h2>
+            <p className="mt-1 text-sm text-[#64748B]">
+              Sign in to your distributor workspace.
             </p>
           </div>
 
           {error && (
-            <div className="mb-4 rounded-md border border-destructive/20 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive">
+            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-[#DE3C4B]">
               {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
               <label
                 htmlFor="email"
-                className="mb-1.5 block text-sm font-medium text-foreground"
+                className="block text-[11px] font-bold tracking-wider text-[#64748B] uppercase"
               >
-                Email address
+                EMAIL ADDRESS
               </label>
               <input
                 id="email"
                 type="email"
+                required
                 autoComplete="email"
-                placeholder="admin@milkmanagement.com"
+                placeholder="admin@distributor.in"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={isSubmitting}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-1.5 flex h-11 w-full rounded-xl border border-[#E2E8F0] bg-white px-3.5 text-sm text-[#192342] placeholder:text-slate-400 focus:border-[#4768E8] focus:outline-none focus:ring-2 focus:ring-[#4768E8]/20 disabled:opacity-50"
               />
             </div>
 
             <div>
               <label
                 htmlFor="password"
-                className="mb-1.5 block text-sm font-medium text-foreground"
+                className="block text-[11px] font-bold tracking-wider text-[#64748B] uppercase"
               >
-                Password
+                PASSWORD
               </label>
-              <div className="relative">
+              <div className="relative mt-1.5">
                 <input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
+                  required
                   autoComplete="current-password"
-                  placeholder="Enter your password"
+                  placeholder="••••••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isSubmitting}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pr-9 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex h-11 w-full rounded-xl border border-[#E2E8F0] bg-white px-3.5 pr-14 text-sm text-[#192342] placeholder:text-slate-400 focus:border-[#4768E8] focus:outline-none focus:ring-2 focus:ring-[#4768E8]/20 disabled:opacity-50"
                 />
                 <button
                   type="button"
-                  tabIndex={-1}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-[#4768E8] hover:text-[#3754D1]"
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
+                  {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
+            </div>
+
+            <div className="flex items-center justify-start pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotEmail(email)
+                  setForgotModalOpen(true)
+                }}
+                className="text-xs font-medium text-[#4768E8] hover:underline"
+              >
+                Forgot password?
+              </button>
             </div>
 
             <button
               type="submit"
               disabled={!isValid || isSubmitting}
-              className="flex h-9 w-full items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-2 flex h-11 w-full items-center justify-center rounded-xl bg-[#4768E8] text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#3754D1] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
+                  Signing In...
                 </>
               ) : (
-                'Sign in'
+                'Sign In'
               )}
             </button>
           </form>
-
-          <p className="mt-6 text-center text-xs text-muted-foreground">
-            Internal admin access only. Contact your system administrator if you
-            need help.
-          </p>
         </div>
       </div>
+
+      {/* Forgot Password Modal */}
+      {forgotModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <button
+              onClick={() => setForgotModalOpen(false)}
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <h3 className="text-lg font-bold text-[#192342]">Forgot password</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Enter your account email to receive a password reset code.
+            </p>
+
+            {forgotMessage && (
+              <div className="mt-3 rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-800">
+                {forgotMessage}
+              </div>
+            )}
+            {forgotError && (
+              <div className="mt-3 rounded-lg bg-red-50 p-2.5 text-xs text-[#DE3C4B]">
+                {forgotError}
+              </div>
+            )}
+
+            <form onSubmit={handleForgotPassword} className="mt-4 space-y-3">
+              <input
+                type="email"
+                required
+                placeholder="Enter your email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                className="h-10 w-full rounded-xl border border-[#E2E8F0] px-3 text-sm focus:border-[#4768E8] focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={forgotLoading}
+                className="flex h-10 w-full items-center justify-center rounded-xl bg-[#4768E8] text-xs font-semibold text-white hover:bg-[#3754D1]"
+              >
+                {forgotLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  'Send Reset Code'
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
