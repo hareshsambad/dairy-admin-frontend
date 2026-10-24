@@ -67,7 +67,9 @@ export function SendBillModal({
   // Status
   const [isLoading, setIsLoading] = useState(false);
   const [successResult, setSuccessResult] = useState<{
+    status?: string;
     messageId: string;
+    recipient?: string;
     formattedMessage: string;
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -309,16 +311,27 @@ export function SendBillModal({
               <div>
                 <h3 className="text-base font-semibold text-foreground">
                   {billType === 'daily'
-                    ? `Daily Milk Update Sent to ${customer.name}!`
-                    : `Monthly Statement Sent to ${customer.name}!`}
+                    ? `Daily Milk Update Submitted to WhatsApp!`
+                    : `Monthly Statement Submitted to WhatsApp!`}
                 </h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Delivered via WhatsApp to{' '}
-                  <strong className="text-foreground">{phone}</strong>
+                  Accepted by Meta Cloud API for customer{' '}
+                  <strong className="text-foreground">{customer.name}</strong> ({successResult.recipient || phone})
                 </p>
-                <div className="mt-3 rounded-md bg-muted p-2.5 text-left text-xs font-mono text-muted-foreground">
-                  <span className="font-semibold text-foreground">Message ID:</span>{' '}
-                  {successResult.messageId}
+                <div className="mt-3 space-y-1.5 rounded-md bg-muted p-3 text-left text-xs font-mono text-muted-foreground">
+                  <div>
+                    <span className="font-semibold text-foreground">Provider Status:</span>{' '}
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                      SubmittedToProvider
+                    </span>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-foreground">Message ID:</span>{' '}
+                    <span className="text-[11px] break-all">{successResult.messageId}</span>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground pt-1.5 border-t border-border/50">
+                    ℹ️ Provider status: Accepted for delivery. Delivery is confirmed once WhatsApp delivers the message to the customer device.
+                  </div>
                 </div>
               </div>
 

@@ -20,10 +20,14 @@ export interface SendBillPayload {
   distributorPhone?: string;
   notes?: string;
   customMessage?: string;
+  templateName?: string;
+  languageCode?: string;
 }
 
 export interface SendBillResponse {
+  status?: string;
   messageId: string;
+  recipient?: string;
   formattedMessage: string;
 }
 
@@ -127,15 +131,20 @@ export const whatsappService = {
   async sendBill(payload: SendBillPayload): Promise<SendBillResponse> {
     const formattedMessage = this.formatBillMessage(payload);
     const response = await api.post<{
+      status?: string;
       messageId: string;
+      recipient?: string;
       formattedMessage: string;
     }>('/whatsapp/send-bill', {
       ...payload,
       useTemplate: true,
-      templateName: 'dairy_milk_bill_update',
+      templateName: payload.templateName || 'dairy_milk_bill_update',
+      languageCode: payload.languageCode || 'en',
     });
     return {
+      status: response.data.status ?? 'SubmittedToProvider',
       messageId: response.data.messageId,
+      recipient: response.data.recipient,
       formattedMessage: response.data.formattedMessage || formattedMessage,
     };
   },
