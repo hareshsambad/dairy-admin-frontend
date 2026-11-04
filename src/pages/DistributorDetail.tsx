@@ -38,10 +38,8 @@ export function DistributorDetail() {
     0
   )
   const monthlyBilling = calculatedMonthly
+  const dailyVolume = customers.reduce((sum, c) => sum + Number(c.liters || 0), 0)
   const billsDue = 0
-  const collectionRate = customerCount > 0 ? 100 : 0
-  const collectedAmount = monthlyBilling * (collectionRate / 100)
-  const outstandingAmount = monthlyBilling - collectedAmount
 
   // Invoices generated directly from the real customers in the database
   const recentBills: CustomerBill[] = useMemo(() => {
@@ -114,9 +112,9 @@ export function DistributorDetail() {
           iconColor="amber"
         />
         <StatCard
-          title="Collection Rate"
-          value={`${collectionRate}%`}
-          subtitle="Healthy collection state"
+          title="Daily Milk Volume"
+          value={`${dailyVolume.toFixed(1)} L`}
+          subtitle="Required daily volume"
           icon={<TrendingUp className="h-5 w-5" />}
           iconColor="green"
         />
@@ -186,15 +184,15 @@ export function DistributorDetail() {
             <div className="mt-6 h-3 w-full overflow-hidden rounded-full bg-slate-100">
               <div
                 className="h-full rounded-full bg-[#1E8E42] transition-all duration-500"
-                style={{ width: `${collectionRate}%` }}
+                style={{ width: `${customerCount > 0 ? 100 : 0}%` }}
               />
             </div>
           </div>
 
           <div className="mt-6 flex items-center justify-between text-xs font-semibold">
-            <span className="text-[#1E8E42]">{collectionRate}% collected</span>
-            <span className="text-[#DE3C4B]">
-              {formatINR(outstandingAmount)} outstanding
+            <span className="text-[#1E8E42]">{customerCount} active accounts</span>
+            <span className="text-[#64748B]">
+              {dailyVolume.toFixed(1)} L / day
             </span>
           </div>
         </div>

@@ -9,6 +9,9 @@ export interface AuthUser {
   dairyName: string;
   firstName?: string;
   lastName?: string;
+  name?: string;
+  role?: string;
+  phoneNumber?: string;
 }
 
 export interface LoginResponse {

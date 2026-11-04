@@ -108,13 +108,13 @@ export function DistributorOverview() {
     (d) => d.status === 'Active'
   ).length
   const totalCustomers = customers.length
+  const totalDailyVolume = customers.reduce((sum, c) => sum + Number(c.liters || 0), 0)
   const totalMonthlyBilling = customers.reduce(
     (sum, c) => sum + Number(c.liters || 0) * Number(c.price || 0) * 30,
     0
   )
   const pendingBills = 0
   const outstandingAmount = 0
-  const collectionPerformance = totalCustomers > 0 ? 100 : 0
 
   const handleAddDistributor = (e: React.FormEvent) => {
     e.preventDefault()
@@ -163,43 +163,36 @@ export function DistributorOverview() {
         </p>
       </div>
 
-      {/* 7 KPI Cards (Computed from Real DB Data) */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Focused Executive KPI Grid */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
-          title="Total Distributors"
-          value={totalDistributors.toString()}
-          subtitle={`${activeDistributors} active in database`}
+          title="Active Distributors"
+          value={activeDistributors.toString()}
+          subtitle={`${totalDistributors} registered in database`}
           icon={<Building2 className="h-5 w-5" />}
           iconColor="blue"
         />
         <StatCard
-          title="Active Distributors"
-          value={activeDistributors.toString()}
-          subtitle={
-            totalDistributors > 0
-              ? `${((activeDistributors / totalDistributors) * 100).toFixed(0)}% active rate`
-              : '0% active rate'
-          }
-          icon={<CheckCircle2 className="h-5 w-5" />}
-          iconColor="green"
-        />
-        <StatCard
           title="Total Customers"
           value={totalCustomers.toString()}
-          subtitle="Live records in database"
+          subtitle="Live registered accounts"
           icon={<Users className="h-5 w-5" />}
           iconColor="purple"
         />
         <StatCard
-          title="Total Monthly Billing"
+          title="Daily Milk Volume"
+          value={`${totalDailyVolume.toFixed(1)} L`}
+          subtitle="Total daily demand"
+          icon={<CheckCircle2 className="h-5 w-5" />}
+          iconColor="green"
+        />
+        <StatCard
+          title="Estimated Monthly Billing"
           value={formatCompactINR(totalMonthlyBilling)}
-          subtitle="Estimated from active rates"
+          subtitle="Active dairy rate projection"
           icon={<IndianRupee className="h-5 w-5" />}
           iconColor="teal"
         />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
           title="Pending Bills"
           value={pendingBills.toString()}
@@ -210,16 +203,9 @@ export function DistributorOverview() {
         <StatCard
           title="Outstanding Amount"
           value={formatINR(outstandingAmount)}
-          subtitle="No overdue balance"
+          subtitle="Zero overdue balance"
           icon={<AlertCircle className="h-5 w-5" />}
           iconColor="red"
-        />
-        <StatCard
-          title="Collection performance"
-          value={`${collectionPerformance}%`}
-          subtitle="Healthy collection state"
-          badgeText="HEALTHY"
-          badgeVariant="success"
         />
       </div>
 
@@ -300,7 +286,6 @@ export function DistributorOverview() {
                   <th className="pb-3 font-semibold">CUSTOMERS</th>
                   <th className="pb-3 font-semibold">MONTHLY BILLING</th>
                   <th className="pb-3 font-semibold">PENDING</th>
-                  <th className="pb-3 font-semibold">COLLECTION</th>
                   <th className="pb-3 font-semibold">STATUS</th>
                   <th className="pb-3 text-right font-semibold"></th>
                 </tr>
@@ -326,9 +311,6 @@ export function DistributorOverview() {
                     </td>
                     <td className="py-4 font-medium text-[#192342]">
                       {dist.pendingBillsCount ?? 0}
-                    </td>
-                    <td className="py-4 font-medium text-[#192342]">
-                      {dist.collectionRate ?? 100}%
                     </td>
                     <td className="py-4">
                       <StatusBadge status={dist.status || 'Active'} />

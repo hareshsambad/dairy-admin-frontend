@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
-import { useCustomers } from '@/hooks/useCustomers'
+import { useCustomers, invalidateCustomerCache } from '@/hooks/useCustomers'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { StatCard } from '@/components/dashboard/StatCard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { formatINR, formatDate, getInitials } from '@/lib/utils'
+import { formatINR, formatDate } from '@/lib/utils'
 import { customerService } from '@/services/customer.service'
 import { SendBillModal } from '@/components/SendBillModal'
 import type { Customer, MilkEntry, CustomerBill } from '@/types'
@@ -196,6 +196,7 @@ export function CustomerProfilePage() {
         price,
       })
 
+      invalidateCustomerCache()
       await loadEntries()
       setEntryModalOpen(false)
     } catch (err: any) {
@@ -214,6 +215,7 @@ export function CustomerProfilePage() {
 
     try {
       await customerService.deleteEntry(customer.id, deletingEntry.id)
+      invalidateCustomerCache()
       await loadEntries()
       setDeletingEntry(null)
     } catch {
@@ -283,9 +285,9 @@ export function CustomerProfilePage() {
       <div className="rounded-2xl border border-[#EAE9F2] bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            {/* Avatar with initials */}
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EFF2FE] text-lg font-bold text-[#4768E8]">
-              {getInitials(customer.name)}
+            {/* Avatar with sequential numeric identifier */}
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#EBF7EE] text-xl font-bold text-[#1E8E42] border-2 border-[#C5E8CE]">
+              {customer.uniqueNumber || '1'}
             </div>
 
             <div>

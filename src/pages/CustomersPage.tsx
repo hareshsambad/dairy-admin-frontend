@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
-import { useCustomers } from '@/hooks/useCustomers'
+import { useCustomers, invalidateCustomerCache } from '@/hooks/useCustomers'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { StatCard } from '@/components/dashboard/StatCard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -33,6 +33,46 @@ export function CustomersPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending' | 'overdue'>('all')
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [selectedCustomerForBill, setSelectedCustomerForBill] = useState<Customer | null>(null)
+
+  // Quick Milk Entry state
+  const [entryModalCustomer, setEntryModalCustomer] = useState<CustomerWithBilling | null>(null)
+  const [entryShift, setEntryShift] = useState<'Morning' | 'Evening'>('Morning')
+  const [entryLiters, setEntryLiters] = useState('1.0')
+  const [entryPrice, setEntryPrice] = useState('60')
+  const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [isSavingEntry, setIsSavingEntry] = useState(false)
+  const [entrySuccessToast, setEntrySuccessToast] = useState<string | null>(null)
+
+  const handleOpenQuickEntry = (cust: CustomerWithBilling, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEntryModalCustomer(cust)
+    setEntryLiters(cust.liters ? cust.liters.toString() : '1.0')
+    setEntryPrice(cust.price ? cust.price.toString() : '60')
+    setEntryShift(new Date().getHours() < 14 ? 'Morning' : 'Evening')
+    setEntryDate(new Date().toISOString().slice(0, 10))
+  }
+
+  const handleSaveQuickEntry = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!entryModalCustomer) return
+    setIsSavingEntry(true)
+    try {
+      await customerService.createOrUpdateEntry(entryModalCustomer.id, {
+        entryDate,
+        liters: parseFloat(entryLiters) || 1,
+        price: parseFloat(entryPrice) || 60,
+      })
+      setEntrySuccessToast(`Milk entry recorded for ${entryModalCustomer.name}`)
+      setTimeout(() => setEntrySuccessToast(null), 3000)
+      setEntryModalCustomer(null)
+      invalidateCustomerCache()
+      fetchCustomers()
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to save milk entry')
+    } finally {
+      setIsSavingEntry(false)
+    }
+  }
 
   // New Customer Form state
   const [newCustomerName, setNewCustomerName] = useState('')
@@ -124,6 +164,7 @@ export function CustomersPage() {
         price: parseFloat(newCustomerPrice) || 60,
         notificationChannel: 'whatsapp',
       })
+      invalidateCustomerCache()
       await fetchCustomers()
       setNewCustomerName('')
       setNewCustomerPhone('')
@@ -199,78 +240,84 @@ export function CustomersPage() {
         />
       </div>
 
-      {/* Customer Directory Section */}
-      <div className="rounded-2xl border border-[#EAE9F2] bg-white p-6 shadow-sm">
-        {/* Section Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-[#192342]">
-              Customer directory
-            </h2>
-            <p className="text-xs text-[#64748B]">
-              Real customer accounts from your PostgreSQL database.
-            </p>
+      {/* Main Customers List Card */}
+      <div className="rounded-2xl border border-[#EAE9F2] bg-white p-5 shadow-sm">
+        {/* Controls Toolbar: Compact Search, Filters, & Action */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-1 flex-col gap-2.5 sm:flex-row sm:items-center">
+            {/* Compact Search Bar */}
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search name, phone or ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-slate-50/50 pl-9 pr-8 text-xs text-[#192342] placeholder:text-slate-400 transition-colors focus:border-[#4768E8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#4768E8]/10"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-600"
+                  title="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Status Filter Pills */}
+            <div className="flex items-center gap-1.5 text-xs">
+              <button
+                onClick={() => setStatusFilter('all')}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
+                  statusFilter === 'all'
+                    ? 'bg-slate-200 text-[#192342]'
+                    : 'bg-slate-100 text-[#64748B] hover:bg-slate-200'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setStatusFilter('paid')}
+                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
+                  statusFilter === 'paid'
+                    ? 'bg-[#EBF7EE] text-[#1E8E42] ring-1 ring-[#1E8E42]/20'
+                    : 'bg-[#EBF7EE]/60 text-[#1E8E42] hover:bg-[#EBF7EE]'
+                }`}
+              >
+                Active
+              </button>
+            </div>
           </div>
 
           <button
             onClick={() => setAddModalOpen(true)}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#4768E8] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3754D1]"
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#4768E8] px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3754D1]"
           >
             <Plus className="h-4 w-4" />
             Add Customer
           </button>
         </div>
 
-        {/* Filters / Search Bar */}
-        <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search by customer name, mobile or ID..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-10 w-full rounded-xl border border-[#E2E8F0] bg-transparent pl-10 pr-4 text-xs text-[#192342] placeholder:text-slate-400 focus:border-[#4768E8] focus:outline-none focus:ring-2 focus:ring-[#4768E8]/10"
-            />
+        {/* Success Toast */}
+        {entrySuccessToast && (
+          <div className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 border border-emerald-200 animate-in fade-in">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <span>{entrySuccessToast}</span>
           </div>
-
-          {/* Status Pills */}
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="text-[11px] font-semibold text-[#64748B] mr-1">
-              Status:
-            </span>
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`rounded-full px-3 py-1 font-semibold transition-colors ${
-                statusFilter === 'all'
-                  ? 'bg-slate-200 text-[#192342]'
-                  : 'bg-slate-100 text-[#64748B] hover:bg-slate-200'
-              }`}
-            >
-              All ({customers.length})
-            </button>
-            <button
-              onClick={() => setStatusFilter('paid')}
-              className={`rounded-full px-3 py-1 font-semibold transition-colors ${
-                statusFilter === 'paid'
-                  ? 'bg-[#EBF7EE] text-[#1E8E42] ring-1 ring-[#1E8E42]/20'
-                  : 'bg-[#EBF7EE]/60 text-[#1E8E42] hover:bg-[#EBF7EE]'
-              }`}
-            >
-              Active
-            </button>
-          </div>
-        </div>
+        )}
 
         {/* Customer Table */}
-        <div className="mt-5 overflow-x-auto">
+        <div className="mt-4 overflow-x-auto">
           {isLoading && customers.length === 0 ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-6 w-6 animate-spin text-[#4768E8]" />
             </div>
           ) : filteredCustomers.length === 0 ? (
             <div className="py-12 text-center text-xs text-[#64748B]">
-              No customers found in database. Click "Add Customer" to add one.
+              No customers found. Click "Add Customer" to add one.
             </div>
           ) : (
             <table className="w-full text-left text-xs">
@@ -294,44 +341,56 @@ export function CustomersPage() {
                     }
                     className="group cursor-pointer transition-colors hover:bg-slate-50/70"
                   >
-                    <td className="py-4 font-bold text-[#192342]">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-400">
-                          #{cust.uniqueNumber}
-                        </span>
-                        <span>{cust.name}</span>
+                    <td className="py-3 font-semibold text-[#192342]">
+                      <div className="flex items-center gap-3">
+                        {/* Phase 5.2: Sequential numeric identifier avatar */}
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EBF7EE] text-xs font-bold text-[#1E8E42] border border-[#C5E8CE]">
+                          {cust.uniqueNumber || '1'}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-[#192342]">{cust.name}</span>
+                          <span className="text-[11px] text-slate-400">#{cust.uniqueNumber}</span>
+                        </div>
                       </div>
                     </td>
-                    <td className="py-4 text-[#64748B]">
+                    <td className="py-3 text-[#64748B]">
                       {cust.phoneNumber || '—'}
                     </td>
-                    <td className="py-4 font-semibold text-[#4768E8]">
+                    <td className="py-3 font-semibold text-[#4768E8]">
                       {Number(cust.liters || 0).toFixed(1)} L
                     </td>
-                    <td className="py-4 font-medium text-[#192342]">
+                    <td className="py-3 font-medium text-[#192342]">
                       ₹{cust.price}
                     </td>
-                    <td className="py-4 font-semibold text-[#192342]">
+                    <td className="py-3 font-semibold text-[#192342]">
                       {formatINR(Number(cust.liters || 0) * Number(cust.price || 0) * 30)}
                     </td>
-                    <td className="py-4">
+                    <td className="py-3">
                       <StatusBadge status="Active" />
                     </td>
-                    <td className="py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                    <td className="py-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenQuickEntry(cust, e)}
+                          className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 transition-colors"
+                          title="Record Today's Milk Entry"
+                        >
+                          <Droplets className="h-4 w-4" />
+                        </button>
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation()
                             setSelectedCustomerForBill(cust)
                           }}
-                          className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50"
+                          className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 transition-colors"
                           title="Send WhatsApp Bill"
                         >
                           <MessageSquare className="h-4 w-4" />
                         </button>
-                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#4768E8] transition-transform group-hover:translate-x-1">
-                          <ArrowRight className="h-4 w-4" />
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-transform group-hover:translate-x-1 group-hover:text-[#4768E8]">
+                          <ArrowRight className="h-3.5 w-3.5" />
                         </span>
                       </div>
                     </td>
@@ -453,6 +512,123 @@ export function CustomersPage() {
         isOpen={!!selectedCustomerForBill}
         onClose={() => setSelectedCustomerForBill(null)}
       />
+
+      {/* Quick Milk Entry Modal */}
+      {entryModalCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <button
+              onClick={() => setEntryModalCustomer(null)}
+              className="absolute right-4 top-4 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 font-bold">
+                <Droplets className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#192342]">Record Milk Entry</h3>
+                <p className="text-xs text-[#64748B]">{entryModalCustomer.name} (#{entryModalCustomer.uniqueNumber})</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveQuickEntry} className="mt-4 space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase">Shift</label>
+                <div className="mt-1 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEntryShift('Morning')}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-semibold border transition-colors ${
+                      entryShift === 'Morning'
+                        ? 'border-amber-500 bg-amber-50 text-amber-800'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    🌅 Morning
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEntryShift('Evening')}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-semibold border transition-colors ${
+                      entryShift === 'Evening'
+                        ? 'border-indigo-500 bg-indigo-50 text-indigo-800'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    🌙 Evening
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase">Entry Date</label>
+                <input
+                  type="date"
+                  required
+                  value={entryDate}
+                  onChange={(e) => setEntryDate(e.target.value)}
+                  className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] px-3 text-xs focus:border-[#4768E8] focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase">Liters (L) *</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    required
+                    value={entryLiters}
+                    onChange={(e) => setEntryLiters(e.target.value)}
+                    className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] px-3 text-xs font-semibold text-[#4768E8] focus:border-[#4768E8] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase">Rate (₹/L) *</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    required
+                    value={entryPrice}
+                    onChange={(e) => setEntryPrice(e.target.value)}
+                    className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] px-3 text-xs font-semibold text-[#192342] focus:border-[#4768E8] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 p-2.5 flex items-center justify-between text-xs font-semibold">
+                <span className="text-slate-500">Calculated Total:</span>
+                <span className="text-base text-[#1E8E42] font-bold">
+                  ₹{(Math.round(((parseFloat(entryLiters) || 0) * (parseFloat(entryPrice) || 0) + Number.EPSILON) * 100) / 100).toFixed(2)}
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEntryModalCustomer(null)}
+                  className="rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEntry}
+                  className="flex items-center gap-1.5 rounded-xl bg-[#4768E8] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#3754D1] disabled:opacity-50"
+                >
+                  {isSavingEntry && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Save Entry
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

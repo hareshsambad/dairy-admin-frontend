@@ -31,5 +31,10 @@ export const authService = {
 
   isAuthenticated(): boolean {
     return !!this.getToken();
-  }
+  },
+
+  async getProfile(): Promise<any> {
+    const response = await api.get('/auth/profile');
+    return response.data;
+  },
 };

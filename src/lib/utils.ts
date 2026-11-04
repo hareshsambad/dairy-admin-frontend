@@ -61,3 +61,13 @@ export function getInitials(name: string): string {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
+
+export function roundToCurrency(amount: number): number {
+  return Math.round((amount + Number.EPSILON) * 100) / 100
+}
+
+export function calculateMilkTotal(liters: number, pricePerLiter: number): number {
+  if (liters <= 0 || pricePerLiter <= 0) return 0
+  const raw = (liters * 1000 * pricePerLiter) / 1000
+  return roundToCurrency(raw)
+}
