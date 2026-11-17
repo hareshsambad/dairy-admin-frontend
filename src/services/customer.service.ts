@@ -38,6 +38,17 @@ export const customerService = {
     return response.data;
   },
 
+  async deleteCustomer(
+    customerId: string
+  ): Promise<{ success: boolean; message: string; deletedCustomerNumber?: string }> {
+    const response = await api.delete<{
+      success: boolean;
+      message: string;
+      deletedCustomerNumber?: string;
+    }>(`/customers/${customerId}`);
+    return response.data;
+  },
+
   async deleteEntry(
     customerId: string,
     entryId: string

@@ -15,6 +15,7 @@ import {
   User,
   FileText,
   SunMedium,
+  MessageSquare,
 } from 'lucide-react';
 
 interface SendBillModalProps {
@@ -222,6 +223,16 @@ export function SendBillModal({
     }
   };
 
+  const handleOpenWhatsAppDirect = () => {
+    const cleanPhone = phone.replace(/[^\d]/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setErrorMsg('Please enter a valid phone number with country code (e.g. 919104152524)');
+      return;
+    }
+    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(currentPreviewMessage)}`;
+    window.open(url, '_blank');
+  };
+
   const handleClose = () => {
     setSuccessResult(null);
     setErrorMsg(null);
@@ -351,10 +362,22 @@ export function SendBillModal({
           ) : (
             <form onSubmit={handleSend} className="space-y-4">
               {errorMsg && (
-                <div className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive">
-                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                  <div>
-                    <strong>Sending failed:</strong> {errorMsg}
+                <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <div>
+                      <strong>Sending failed:</strong> {errorMsg}
+                    </div>
+                  </div>
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={handleOpenWhatsAppDirect}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      Send via WhatsApp Web/App instead
+                    </button>
                   </div>
                 </div>
               )}
@@ -622,34 +645,45 @@ export function SendBillModal({
               </div>
 
               {/* Submit Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-input/60">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-input/60">
                 <button
                   type="button"
-                  onClick={handleClose}
-                  disabled={isLoading}
-                  className="rounded-xl border border-input bg-transparent px-3.5 py-2 text-xs font-medium text-foreground hover:bg-muted"
+                  onClick={handleOpenWhatsAppDirect}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-600 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
+                  title="Open directly in WhatsApp Web or App"
                 >
-                  Cancel
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  Direct WhatsApp (wa.me)
                 </button>
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-emerald-700 focus:outline-none disabled:opacity-50"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Sending to {customer.name}...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="h-3.5 w-3.5" />
-                      {billType === 'daily'
-                        ? `Send Daily Milk Update (₹${dailyTotal.toFixed(0)})`
-                        : `Send Monthly Bill (₹${netMonthlyPayable.toFixed(0)})`}
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleClose}
+                    disabled={isLoading}
+                    className="rounded-xl border border-input bg-transparent px-3.5 py-2 text-xs font-medium text-foreground hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-emerald-700 focus:outline-none disabled:opacity-50"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Sending to {customer.name}...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-3.5 w-3.5" />
+                        {billType === 'daily'
+                          ? `Send Daily Milk Update (₹${dailyTotal.toFixed(0)})`
+                          : `Send Monthly Bill (₹${netMonthlyPayable.toFixed(0)})`}
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           )}

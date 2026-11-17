@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { useCustomers, invalidateCustomerCache } from '@/hooks/useCustomers'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
@@ -27,11 +27,14 @@ import {
 
 export function CustomerProfilePage() {
   const { id: customerParamId, distId } = useParams<{ id: string; distId?: string }>()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const { customers, isLoading: isCustomersLoading, fetchCustomers } = useCustomers()
 
   const [activeTab, setActiveTab] = useState<'daily-entries' | 'bill-history'>('daily-entries')
   const [isBillModalOpen, setIsBillModalOpen] = useState(false)
+  const [isCustomerDeleteOpen, setIsCustomerDeleteOpen] = useState(false)
+  const [isDeletingCustomer, setIsDeletingCustomer] = useState(false)
 
   // Current selected month for daily entries (format: YYYY-MM)
   const currentMonthStr = useMemo(() => {
@@ -225,6 +228,19 @@ export function CustomerProfilePage() {
     }
   }
 
+  const handleDeleteCustomer = async () => {
+    if (!customer) return
+    setIsDeletingCustomer(true)
+    try {
+      await customerService.deleteCustomer(customer.id)
+      invalidateCustomerCache()
+      navigate(`/distributors/${distributorId}/customers`)
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to delete customer')
+      setIsDeletingCustomer(false)
+    }
+  }
+
   if (isCustomersLoading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -313,6 +329,13 @@ export function CustomerProfilePage() {
             >
               <MessageSquare className="h-4 w-4" />
               Send WhatsApp Bill
+            </button>
+            <button
+              onClick={() => setIsCustomerDeleteOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-semibold text-[#DE3C4B] shadow-sm transition-colors hover:bg-red-100"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete Customer
             </button>
           </div>
         </div>
@@ -752,6 +775,40 @@ export function CustomerProfilePage() {
               >
                 {isDeleting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Customer Modal */}
+      {isCustomerDeleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-base font-bold text-[#192342]">
+              Delete Customer Account?
+            </h3>
+            <p className="mt-2 text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to delete <strong>{customer.name}</strong> (#{customer.uniqueNumber})?
+              All associated milk collection entries and payment history will be permanently deleted. This cannot be undone.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={isDeletingCustomer}
+                onClick={() => setIsCustomerDeleteOpen(false)}
+                className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingCustomer}
+                onClick={handleDeleteCustomer}
+                className="flex items-center gap-1.5 rounded-xl bg-[#DE3C4B] px-4 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {isDeletingCustomer && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Delete Customer
               </button>
             </div>
           </div>
