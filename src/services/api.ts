@@ -21,7 +21,20 @@ api.interceptors.response.use(
   (response) => {
     return response;
   },
-  (error) => {
+  async (error) => {
+    const config = error.config;
+    // Auto-retry transient gateway/restart errors (502, 503, 504) once after 1 second
+    if (
+      error.response &&
+      [502, 503, 504].includes(error.response.status) &&
+      config &&
+      !config._isRetry
+    ) {
+      config._isRetry = true;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return api(config);
+    }
+
     if (error.response && error.response.status === 401) {
       const requestUrl = error.config?.url || '';
       const isAuthEndpoint =
