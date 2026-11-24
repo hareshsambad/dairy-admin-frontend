@@ -23,9 +23,23 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response && error.response.status === 401) {
+      const requestUrl = error.config?.url || '';
+      const isAuthEndpoint =
+        requestUrl.includes('/auth/admin/login') ||
+        requestUrl.includes('/auth/login') ||
+        requestUrl.includes('/auth/forgot-password') ||
+        requestUrl.includes('/auth/reset-password');
+
       localStorage.removeItem('milk_admin_token');
       localStorage.removeItem('milk_admin_user');
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+
+      // Only redirect when an existing session token expires, never on login attempts or when already on login/root
+      if (
+        !isAuthEndpoint &&
+        typeof window !== 'undefined' &&
+        window.location.pathname !== '/login' &&
+        window.location.pathname !== '/'
+      ) {
         window.location.href = '/login';
       }
     }

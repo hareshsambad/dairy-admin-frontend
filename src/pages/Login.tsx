@@ -218,7 +218,7 @@ export function LoginPage() {
 
     try {
       await login({ email: forgotEmail.trim(), password: newPassword })
-      navigate('/distributors', { replace: true })
+      navigate('/dashboard', { replace: true })
     } catch (err: any) {
       setError(
         err?.response?.data?.message ||
