@@ -59,7 +59,7 @@ export function LoginPage() {
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/distributors" replace />
+    return <Navigate to="/dashboard" replace />
   }
 
   const isValid = email.trim().length > 0 && password.length > 0
@@ -73,9 +73,19 @@ export function LoginPage() {
 
     try {
       await login({ email: email.trim(), password })
-      navigate('/distributors', { replace: true })
+      navigate('/dashboard', { replace: true })
     } catch (err: any) {
-      if (err?.response?.data?.message) {
+      if (err?.response?.status === 403 || err?.message?.includes('Access denied')) {
+        setError(
+          err?.response?.data?.message ||
+            'Access denied. This application is restricted to authorized administrators.'
+        )
+      } else if (err?.response?.status === 401) {
+        setError(
+          err?.response?.data?.message ||
+            'Invalid email or password. Please try again.'
+        )
+      } else if (err?.response?.data?.message) {
         setError(
           Array.isArray(err.response.data.message)
             ? err.response.data.message.join(', ')
@@ -230,10 +240,10 @@ export function LoginPage() {
           </div>
           <div>
             <h1 className="text-lg font-bold text-white leading-tight">
-              Distributor Admin
+              Milk Admin Panel
             </h1>
             <p className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase">
-              POWER YOUR DISTRIBUTION NETWORK
+              PLATFORM OWNER PORTAL
             </p>
           </div>
         </div>
@@ -241,21 +251,21 @@ export function LoginPage() {
         {/* Center message */}
         <div className="max-w-lg">
           <h2 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl leading-[1.15]">
-            Run your distributor business with clarity.
+            Platform Owner & System Command Center
           </h2>
           <p className="mt-4 text-base text-slate-300 leading-relaxed max-w-md">
-            A modern command center for customers, billing, and collections — all in one place.
+            Monitor registered distributors, platform milk collections, customer records, and global business transactions in real time.
           </p>
           <div className="mt-6">
             <span className="inline-block rounded-full bg-white px-4 py-1.5 text-xs font-bold tracking-wider text-[#4768E8] shadow-sm uppercase">
-              PRODUCTION-READY SAAS
+              ADMINISTRATOR ONLY
             </span>
           </div>
         </div>
 
         {/* Footer */}
         <p className="text-xs text-slate-400">
-          © {new Date().getFullYear()} Distributor Admin · Multi-Tenant Dairy SaaS Platform
+          © {new Date().getFullYear()} Milk Management Platform · Platform Owner Portal
         </p>
       </div>
 
@@ -269,18 +279,18 @@ export function LoginPage() {
             </div>
             <div>
               <div className="text-base font-bold text-[#192342]">
-                Distributor Admin
+                Milk Admin Panel
               </div>
               <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
-                POWER YOUR DISTRIBUTION NETWORK
+                PLATFORM OWNER PORTAL
               </div>
             </div>
           </div>
 
           <div>
-            <h2 className="text-2xl font-bold text-[#192342]">Welcome back</h2>
+            <h2 className="text-2xl font-bold text-[#192342]">Admin Sign In</h2>
             <p className="mt-1 text-sm text-[#64748B]">
-              Sign in to your distributor workspace.
+              Sign in with your administrator credentials.
             </p>
           </div>
 

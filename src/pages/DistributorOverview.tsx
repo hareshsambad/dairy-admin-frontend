@@ -1,421 +1,350 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '@/hooks/useAuth'
-import { useCustomers } from '@/hooks/useCustomers'
+import { adminService } from '@/services/admin.service'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { StatCard } from '@/components/dashboard/StatCard'
-import { StatusBadge } from '@/components/ui/StatusBadge'
-import { formatCompactINR, formatINR } from '@/lib/utils'
-import type { Distributor } from '@/types'
 import {
   Search,
   Building2,
   Users,
-  IndianRupee,
-  Clock,
-  AlertCircle,
   CheckCircle2,
+  XCircle,
   ArrowRight,
-  Plus,
   Loader2,
-  X,
+  RefreshCw,
+  Power,
+  Calendar,
 } from 'lucide-react'
 
+interface DistributorItem {
+  did: string
+  id: string
+  dairyName: string
+  isActive: boolean
+  createdAt: string | null
+  user: {
+    uid: string
+    name: string
+    email: string
+    phoneNumber: string
+    isActive: boolean
+  }
+  customerCount: number
+  activeCustomerCount: number
+}
+
 export function DistributorOverview() {
-  const { user } = useAuth()
-  const { customers, isLoading, fetchCustomers } = useCustomers()
   const navigate = useNavigate()
-
+  const [distributors, setDistributors] = useState<DistributorItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active'>('active')
-  const [addModalOpen, setAddModalOpen] = useState(false)
-  const [newDairyName, setNewDairyName] = useState('')
-  const [newContact, setNewContact] = useState('')
-  const [newEmail, setNewEmail] = useState('')
-  const [newAddress, setNewAddress] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
 
-  // Load custom distributors created by user
-  const [customDistributors, setCustomDistributors] = useState<Distributor[]>(() => {
+  const fetchDistributors = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
     try {
-      const saved = localStorage.getItem('milk_admin_distributors')
-      return saved ? JSON.parse(saved) : []
-    } catch {
-      return []
+      const data = await adminService.getDistributors(
+        searchTerm || undefined,
+        statusFilter !== 'all' ? statusFilter : undefined
+      )
+      setDistributors(Array.isArray(data) ? data : [])
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Failed to fetch distributors')
+    } finally {
+      setIsLoading(false)
     }
-  })
+  }, [searchTerm, statusFilter])
 
   useEffect(() => {
-    fetchCustomers()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    const timer = setTimeout(() => {
+      fetchDistributors()
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [fetchDistributors])
 
-  // Build distributor list strictly from live backend auth & actual saved accounts
-  const mergedDistributors = useMemo(() => {
-    const list: Distributor[] = []
+  const handleToggleStatus = async (dist: DistributorItem, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const newStatus = !dist.isActive
+    const actionText = newStatus ? 'activate' : 'deactivate'
+    const confirmMessage = newStatus
+      ? `Are you sure you want to activate "${dist.dairyName}"?`
+      : `Are you sure you want to deactivate "${dist.dairyName}"? All its associated customers will also be deactivated.`
 
-    // 1. Current authenticated distributor directly from backend database
-    if (user) {
-      const customerCount = customers.length
-      const monthlyBilling = customers.reduce(
-        (sum, c) => sum + Number(c.liters || 0) * Number(c.price || 0) * 30,
-        0
-      )
+    if (!window.confirm(confirmMessage)) return
 
-      list.push({
-        id: user.id || 'my-dairy',
-        dairyName: user.dairyName || 'My Dairy Account',
-        email: user.email || '—',
-        contact: '—',
-        address: 'Registered Dairy',
-        customerCount,
-        monthlyBilling,
-        pendingBillsCount: 0,
-        collectionRate: 100,
-        status: 'Active',
-      })
-    }
-
-    // 2. Any additional custom registered distributor accounts
-    for (const d of customDistributors) {
-      if (d.id !== user?.id) {
-        list.push(d)
-      }
-    }
-
-    return list
-  }, [user, customers, customDistributors])
-
-  // Filtered distributors
-  const filteredDistributors = useMemo(() => {
-    return mergedDistributors.filter((dist) => {
-      const term = searchTerm.toLowerCase().trim()
-      const matchesSearch =
-        !term ||
-        dist.dairyName.toLowerCase().includes(term) ||
-        (dist.contact && dist.contact.toLowerCase().includes(term)) ||
-        (dist.email && dist.email.toLowerCase().includes(term))
-
-      const matchesStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'active' && dist.status === 'Active')
-
-      return matchesSearch && matchesStatus
-    })
-  }, [mergedDistributors, searchTerm, statusFilter])
-
-  // Real calculations directly from the live database
-  const totalDistributors = mergedDistributors.length
-  const activeDistributors = mergedDistributors.filter(
-    (d) => d.status === 'Active'
-  ).length
-  const totalCustomers = customers.length
-  const totalDailyVolume = customers.reduce((sum, c) => sum + Number(c.liters || 0), 0)
-  const totalMonthlyBilling = customers.reduce(
-    (sum, c) => sum + Number(c.liters || 0) * Number(c.price || 0) * 30,
-    0
-  )
-  const pendingBills = 0
-  const outstandingAmount = 0
-
-  const handleAddDistributor = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newDairyName.trim()) return
-
-    const newDist: Distributor = {
-      id: `dist-${Date.now()}`,
-      dairyName: newDairyName.trim(),
-      email: newEmail.trim() || '—',
-      contact: newContact.trim() || '—',
-      address: newAddress.trim() || '—',
-      customerCount: 0,
-      monthlyBilling: 0,
-      pendingBillsCount: 0,
-      collectionRate: 100,
-      status: 'Active',
-    }
-
-    const updated = [newDist, ...customDistributors]
-    setCustomDistributors(updated)
+    setUpdatingId(dist.did)
     try {
-      localStorage.setItem('milk_admin_distributors', JSON.stringify(updated))
-    } catch {
-      // ignore
+      await adminService.updateDistributorStatus(dist.did, newStatus)
+      await fetchDistributors()
+    } catch (err: any) {
+      alert(err?.response?.data?.message || `Failed to ${actionText} distributor`)
+    } finally {
+      setUpdatingId(null)
     }
-
-    setNewDairyName('')
-    setNewContact('')
-    setNewEmail('')
-    setNewAddress('')
-    setAddModalOpen(false)
   }
+
+  const stats = useMemo(() => {
+    const total = distributors.length
+    const active = distributors.filter((d) => d.isActive).length
+    const inactive = total - active
+    const totalCustomers = distributors.reduce((sum, d) => sum + (d.customerCount || 0), 0)
+    return { total, active, inactive, totalCustomers }
+  }, [distributors])
 
   return (
     <div className="space-y-6">
       {/* Breadcrumbs */}
-      <Breadcrumbs items={[{ label: 'Overview' }, { label: 'Distributor' }]} />
+      <Breadcrumbs items={[{ label: 'Distributor Management' }]} />
 
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-[#192342] sm:text-3xl">
-          Distributor Overview
-        </h1>
-        <p className="mt-1 text-sm text-[#64748B]">
-          Monitor your live network, billing health, and collection performance.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-[#192342] sm:text-3xl">
+            Distributor Management
+          </h1>
+          <p className="mt-1 text-sm text-[#64748B]">
+            Review all registered milk distributors, manage their account statuses, and inspect individual dairy operations.
+          </p>
+        </div>
+
+        <button
+          onClick={fetchDistributors}
+          disabled={isLoading}
+          className="inline-flex items-center gap-2 rounded-xl border border-[#EAE9F2] bg-white px-4 py-2 text-xs font-semibold text-[#192342] shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          Refresh List
+        </button>
       </div>
 
-      {/* Focused Executive KPI Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* 4 Summary Stat Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Active Distributors"
-          value={activeDistributors.toString()}
-          subtitle={`${totalDistributors} registered in database`}
+          title="Total Registered"
+          value={stats.total.toString()}
+          subtitle="Distributors on platform"
           icon={<Building2 className="h-5 w-5" />}
           iconColor="blue"
         />
         <StatCard
-          title="Total Customers"
-          value={totalCustomers.toString()}
-          subtitle="Live registered accounts"
-          icon={<Users className="h-5 w-5" />}
-          iconColor="purple"
-        />
-        <StatCard
-          title="Daily Milk Volume"
-          value={`${totalDailyVolume.toFixed(1)} L`}
-          subtitle="Total daily demand"
+          title="Active Dairies"
+          value={stats.active.toString()}
+          subtitle="Currently operational"
           icon={<CheckCircle2 className="h-5 w-5" />}
           iconColor="green"
+          badgeText="Active"
+          badgeVariant="success"
         />
         <StatCard
-          title="Estimated Monthly Billing"
-          value={formatCompactINR(totalMonthlyBilling)}
-          subtitle="Active dairy rate projection"
-          icon={<IndianRupee className="h-5 w-5" />}
-          iconColor="teal"
-        />
-        <StatCard
-          title="Pending Bills"
-          value={pendingBills.toString()}
-          subtitle="All accounts up to date"
-          icon={<Clock className="h-5 w-5" />}
-          iconColor="amber"
-        />
-        <StatCard
-          title="Outstanding Amount"
-          value={formatINR(outstandingAmount)}
-          subtitle="Zero overdue balance"
-          icon={<AlertCircle className="h-5 w-5" />}
+          title="Inactive Dairies"
+          value={stats.inactive.toString()}
+          subtitle="Deactivated accounts"
+          icon={<XCircle className="h-5 w-5" />}
           iconColor="red"
+          badgeText={stats.inactive > 0 ? `${stats.inactive} Inactive` : undefined}
+          badgeVariant="danger"
+        />
+        <StatCard
+          title="Total Customers"
+          value={stats.totalCustomers.toString()}
+          subtitle="Across all distributors"
+          icon={<Users className="h-5 w-5" />}
+          iconColor="teal"
         />
       </div>
 
-      {/* Distributors Section */}
-      <div className="rounded-2xl border border-[#EAE9F2] bg-white p-6 shadow-sm">
-        {/* Section Header & Actions */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-[#192342]">Distributors</h2>
-            <p className="text-xs text-[#64748B]">
-              Registered distributor accounts in your database.
-            </p>
-          </div>
+      {/* Search and Filters */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-[#EAE9F2] bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search by dairy name, owner name, email, or mobile..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded-xl border border-[#EAE9F2] bg-[#F8F7FB] py-2 pl-10 pr-4 text-xs text-[#192342] placeholder-slate-400 focus:border-[#4768E8] focus:bg-white focus:outline-none"
+          />
+        </div>
 
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setAddModalOpen(true)}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#4768E8] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#3754D1]"
+            onClick={() => setStatusFilter('all')}
+            className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+              statusFilter === 'all'
+                ? 'bg-[#192342] text-white'
+                : 'bg-[#F8F7FB] text-slate-600 hover:bg-slate-200'
+            }`}
           >
-            <Plus className="h-4 w-4" />
-            Add Distributor
+            All ({distributors.length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('active')}
+            className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+              statusFilter === 'active'
+                ? 'bg-[#1E8E42] text-white'
+                : 'bg-[#EBF7EE] text-[#1E8E42] hover:bg-green-100'
+            }`}
+          >
+            Active
+          </button>
+          <button
+            onClick={() => setStatusFilter('inactive')}
+            className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+              statusFilter === 'inactive'
+                ? 'bg-[#DE3C4B] text-white'
+                : 'bg-[#FEECEE] text-[#DE3C4B] hover:bg-red-100'
+            }`}
+          >
+            Inactive
           </button>
         </div>
+      </div>
 
-        {/* Filter / Search Bar */}
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search distributor, contact or mobile..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-10 w-full rounded-xl border border-[#E2E8F0] bg-transparent pl-10 pr-4 text-xs text-[#192342] placeholder:text-slate-400 focus:border-[#4768E8] focus:outline-none focus:ring-2 focus:ring-[#4768E8]/10"
-            />
-          </div>
-
-          {/* Status Tabs */}
-          <div className="flex items-center gap-1.5 rounded-xl bg-slate-100 p-1">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                statusFilter === 'all'
-                  ? 'bg-white text-[#192342] shadow-xs'
-                  : 'text-[#64748B] hover:text-[#192342]'
-              }`}
-            >
-              All statuses
-            </button>
-            <button
-              onClick={() => setStatusFilter('active')}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                statusFilter === 'active'
-                  ? 'bg-[#EFF2FE] text-[#4768E8] shadow-xs'
-                  : 'text-[#64748B] hover:text-[#192342]'
-              }`}
-            >
-              Active
-            </button>
-          </div>
+      {/* Error alert */}
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs font-medium text-[#DE3C4B]">
+          {error}
         </div>
+      )}
 
-        {/* Distributors Table */}
-        <div className="mt-5 overflow-x-auto">
-          {isLoading && mergedDistributors.length === 0 ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-6 w-6 animate-spin text-[#4768E8]" />
-            </div>
-          ) : filteredDistributors.length === 0 ? (
-            <div className="py-12 text-center text-xs text-[#64748B]">
-              No distributors found in database.
-            </div>
-          ) : (
+      {/* Distributors Table */}
+      <div className="overflow-hidden rounded-2xl border border-[#EAE9F2] bg-white shadow-sm">
+        {isLoading && distributors.length === 0 ? (
+          <div className="flex h-48 items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-[#4768E8]" />
+          </div>
+        ) : distributors.length === 0 ? (
+          <div className="p-12 text-center">
+            <Building2 className="mx-auto h-10 w-10 text-slate-300" />
+            <h3 className="mt-3 text-sm font-bold text-[#192342]">No distributors found</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              {searchTerm || statusFilter !== 'all'
+                ? 'Try adjusting your search query or filter options.'
+                : 'No distributors have registered on the platform yet.'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-[#EAE9F2] text-[11px] font-bold tracking-wider text-[#64748B] uppercase">
-                  <th className="pb-3 font-semibold">DISTRIBUTOR</th>
-                  <th className="pb-3 font-semibold">CONTACT / MOBILE</th>
-                  <th className="pb-3 font-semibold">CUSTOMERS</th>
-                  <th className="pb-3 font-semibold">MONTHLY BILLING</th>
-                  <th className="pb-3 font-semibold">PENDING</th>
-                  <th className="pb-3 font-semibold">STATUS</th>
-                  <th className="pb-3 text-right font-semibold"></th>
+              <thead className="border-b border-[#EAE9F2] bg-[#F8F7FB] text-slate-500 font-semibold">
+                <tr>
+                  <th className="px-6 py-3.5">Dairy & Business</th>
+                  <th className="px-6 py-3.5">Owner Contact</th>
+                  <th className="px-6 py-3.5">Customers</th>
+                  <th className="px-6 py-3.5">Account Status</th>
+                  <th className="px-6 py-3.5">Registration</th>
+                  <th className="px-6 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EAE9F2]">
-                {filteredDistributors.map((dist) => (
-                  <tr
-                    key={dist.id}
-                    onClick={() => navigate(`/distributors/${dist.id}`)}
-                    className="group cursor-pointer transition-colors hover:bg-slate-50/70"
-                  >
-                    <td className="py-4 font-semibold text-[#192342]">
-                      {dist.dairyName}
-                    </td>
-                    <td className="py-4 text-[#64748B]">
-                      {dist.contact || '—'}
-                    </td>
-                    <td className="py-4 font-medium text-[#192342]">
-                      {dist.customerCount ?? 0}
-                    </td>
-                    <td className="py-4 font-medium text-[#192342]">
-                      {formatINR(dist.monthlyBilling || 0)}
-                    </td>
-                    <td className="py-4 font-medium text-[#192342]">
-                      {dist.pendingBillsCount ?? 0}
-                    </td>
-                    <td className="py-4">
-                      <StatusBadge status={dist.status || 'Active'} />
-                    </td>
-                    <td className="py-4 text-right">
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#4768E8] transition-transform group-hover:translate-x-1">
-                        <ArrowRight className="h-4 w-4" />
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {distributors.map((dist) => {
+                  const isUpdating = updatingId === dist.did
+                  return (
+                    <tr
+                      key={dist.did}
+                      onClick={() => navigate(`/distributors/${dist.did}`)}
+                      className="cursor-pointer transition hover:bg-slate-50/80"
+                    >
+                      {/* Dairy name & ID */}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#EFF2FE] font-bold text-[#4768E8]">
+                            {dist.dairyName.slice(0, 1).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-bold text-[#192342]">{dist.dairyName}</div>
+                            <div className="text-[11px] text-slate-400 font-mono">
+                              ID: {dist.did.slice(0, 8)}...
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Owner contact */}
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-[#192342]">{dist.user.name}</div>
+                        <div className="text-[11px] text-slate-500">{dist.user.email}</div>
+                        {dist.user.phoneNumber && (
+                          <div className="text-[11px] text-slate-400">{dist.user.phoneNumber}</div>
+                        )}
+                      </td>
+
+                      {/* Customers count */}
+                      <td className="px-6 py-4">
+                        <div className="inline-flex items-center gap-1.5 rounded-lg bg-[#EFF2FE] px-2.5 py-1 text-xs font-semibold text-[#4768E8]">
+                          <Users className="h-3.5 w-3.5" />
+                          <span>{dist.customerCount} customers</span>
+                        </div>
+                        <div className="mt-1 text-[11px] text-slate-400">
+                          {dist.activeCustomerCount} active
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                              dist.isActive
+                                ? 'bg-[#EBF7EE] text-[#1E8E42]'
+                                : 'bg-[#FEECEE] text-[#DE3C4B]'
+                            }`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                dist.isActive ? 'bg-[#1E8E42]' : 'bg-[#DE3C4B]'
+                              }`}
+                            />
+                            {dist.isActive ? 'Active' : 'Inactive'}
+                          </span>
+
+                          <button
+                            onClick={(e) => handleToggleStatus(dist, e)}
+                            disabled={isUpdating}
+                            title={dist.isActive ? 'Deactivate account' : 'Activate account'}
+                            className={`rounded-lg p-1 transition ${
+                              dist.isActive
+                                ? 'text-slate-400 hover:bg-red-50 hover:text-[#DE3C4B]'
+                                : 'text-slate-400 hover:bg-green-50 hover:text-[#1E8E42]'
+                            }`}
+                          >
+                            {isUpdating ? (
+                              <Loader2 className="h-4 w-4 animate-spin text-[#4768E8]" />
+                            ) : (
+                              <Power className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* Registration Date */}
+                      <td className="px-6 py-4 text-slate-500">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                          <span>
+                            {dist.createdAt ? dist.createdAt.slice(0, 10) : '—'}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-6 py-4 text-right">
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-[#4768E8] group-hover:underline">
+                          <span>Inspect</span>
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
-          )}
-        </div>
-      </div>
-
-      {/* Add Distributor Modal */}
-      {addModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <button
-              onClick={() => setAddModalOpen(false)}
-              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            <h3 className="text-lg font-bold text-[#192342]">Add Distributor</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Register a new distributor dairy to your platform network.
-            </p>
-
-            <form onSubmit={handleAddDistributor} className="mt-4 space-y-3.5">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase">
-                  Dairy / Distributor Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Anand Milk Dairy"
-                  value={newDairyName}
-                  onChange={(e) => setNewDairyName(e.target.value)}
-                  className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] px-3 text-xs focus:border-[#4768E8] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase">
-                  Contact / Mobile
-                </label>
-                <input
-                  type="text"
-                  placeholder="+91 98250 12345"
-                  value={newContact}
-                  onChange={(e) => setNewContact(e.target.value)}
-                  className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] px-3 text-xs focus:border-[#4768E8] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  placeholder="contact@dairy.in"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] px-3 text-xs focus:border-[#4768E8] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase">
-                  Address
-                </label>
-                <input
-                  type="text"
-                  placeholder="Station Road, Anand, Gujarat"
-                  value={newAddress}
-                  onChange={(e) => setNewAddress(e.target.value)}
-                  className="mt-1 h-9 w-full rounded-xl border border-[#E2E8F0] px-3 text-xs focus:border-[#4768E8] focus:outline-none"
-                />
-              </div>
-
-              <div className="mt-5 flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setAddModalOpen(false)}
-                  className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-xl bg-[#4768E8] px-4 py-2 text-xs font-semibold text-white hover:bg-[#3754D1]"
-                >
-                  Save Distributor
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

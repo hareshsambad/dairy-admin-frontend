@@ -1,441 +1,244 @@
-import { useState, useMemo, useEffect } from 'react'
-import { useCustomers } from '@/hooks/useCustomers'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { Link } from 'react-router-dom'
+import { adminService } from '@/services/admin.service'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { StatCard } from '@/components/dashboard/StatCard'
-import { StatusBadge } from '@/components/ui/StatusBadge'
-import { formatINR, roundToCurrency } from '@/lib/utils'
-import { SendBillModal } from '@/components/SendBillModal'
-import type { Customer } from '@/types'
+import { formatCompactINR, formatINR } from '@/lib/utils'
+import type { TransactionItem } from '@/types'
 import {
   Search,
   IndianRupee,
-  CheckCircle2,
-  Clock,
-  Droplets,
   Loader2,
-  X,
-  MessageSquare,
-  Calendar,
-  FileText,
+  Receipt,
+  RefreshCw,
+  CreditCard,
 } from 'lucide-react'
 
-export interface CustomerBillingRow {
-  id: string
-  billNumber: string
-  customerId: string
-  customerNumber: string
-  customerName: string
-  phoneNumber?: string
-  period: string
-  totalLiters: number
-  ratePerLiter: number
-  periodAmount: number
-  previousBalance: number
-  payments: number
-  netPayable: number
-  status: 'Paid' | 'Pending' | 'Overdue'
-  dueDate: string
-  paidDate?: string
-  rawCustomer: Customer
-}
-
 export function BillingPage() {
-  const { customers, isLoading, fetchCustomers } = useCustomers()
+  const [transactions, setTransactions] = useState<TransactionItem[]>([])
+  const [summary, setSummary] = useState<{
+    totalTransactions: number
+    totalReceivedAmount: number
+    totalBilledAmount: number
+    totalOutstandingAmount: number
+  }>({
+    totalTransactions: 0,
+    totalReceivedAmount: 0,
+    totalBilledAmount: 0,
+    totalOutstandingAmount: 0,
+  })
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending'>('all')
-  const [selectedMonthOffset, setSelectedMonthOffset] = useState<number>(0) // 0: current, -1: last month
-  const [selectedCustomerForBill, setSelectedCustomerForBill] = useState<Customer | null>(null)
-  const [activeBillDetail, setActiveBillDetail] = useState<CustomerBillingRow | null>(null)
+
+  const loadTransactions = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const res = await adminService.getTransactions()
+      setTransactions(res.transactions || [])
+      setSummary(res.summary)
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Failed to load transaction records')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    fetchCustomers()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    loadTransactions()
+  }, [loadTransactions])
 
-  // Compute selected month period metadata
-  const periodInfo = useMemo(() => {
-    const target = new Date()
-    target.setMonth(target.getMonth() + selectedMonthOffset)
-    const monthName = target.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
-    const shortMonth = target.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
-    const daysInMonth = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()
-    const isCurrentMonth = selectedMonthOffset === 0
-    const today = new Date().toISOString().slice(0, 10)
-    const dueDate = new Date(target.getFullYear(), target.getMonth() + 1, 5).toISOString().slice(0, 10)
+  const filtered = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim()
+    if (!term) return transactions
 
-    return {
-      monthName,
-      shortMonth,
-      daysInMonth,
-      isCurrentMonth,
-      today,
-      dueDate,
-    }
-  }, [selectedMonthOffset])
+    return transactions.filter((t) => {
+      const custName = t.customer?.name?.toLowerCase() || ''
+      const custNum = t.customer?.uniqueNumber?.toString() || ''
+      const dairyName = t.distributor?.dairyName?.toLowerCase() || ''
+      const period = t.period?.toLowerCase() || ''
+      const note = t.note?.toLowerCase() || ''
+      const pid = t.pid?.toLowerCase() || ''
 
-  // Build precision-audited billing ledger directly from database customers
-  const bills: CustomerBillingRow[] = useMemo(() => {
-    return customers.map((c, index) => {
-      const dailyLiters = Number(c.liters || 0)
-      const rate = Number(c.price || 0)
-      const totalLiters = roundToCurrency(dailyLiters * periodInfo.daysInMonth)
-      const periodAmount = roundToCurrency(totalLiters * rate)
-      const previousBalance = 0 // Clean carried balance
-      const payments = 0
-      const netPayable = roundToCurrency(periodAmount + previousBalance - payments)
-      const status: 'Paid' | 'Pending' = periodInfo.isCurrentMonth ? 'Paid' : 'Pending'
-
-      return {
-        id: `inv-${c.id}-${periodInfo.shortMonth}`,
-        billNumber: `BILL-${String(index + 1).padStart(3, '0')}`,
-        customerId: c.id,
-        customerNumber: c.uniqueNumber || String(index + 1),
-        customerName: c.name,
-        phoneNumber: c.phoneNumber,
-        period: periodInfo.monthName,
-        totalLiters,
-        ratePerLiter: rate,
-        periodAmount,
-        previousBalance,
-        payments,
-        netPayable,
-        status,
-        dueDate: periodInfo.dueDate,
-        paidDate: status === 'Paid' ? periodInfo.today : undefined,
-        rawCustomer: c,
-      }
+      return (
+        custName.includes(term) ||
+        custNum.includes(term) ||
+        dairyName.includes(term) ||
+        period.includes(term) ||
+        note.includes(term) ||
+        pid.includes(term)
+      )
     })
-  }, [customers, periodInfo])
-
-  const filteredBills = useMemo(() => {
-    return bills.filter((b) => {
-      const term = searchTerm.toLowerCase().trim()
-      const matchesSearch =
-        !term ||
-        b.billNumber.toLowerCase().includes(term) ||
-        b.customerName.toLowerCase().includes(term) ||
-        (b.customerNumber && b.customerNumber.includes(term)) ||
-        (b.phoneNumber && b.phoneNumber.includes(term))
-
-      const matchesStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'paid' && b.status === 'Paid') ||
-        (statusFilter === 'pending' && b.status === 'Pending')
-
-      return matchesSearch && matchesStatus
-    })
-  }, [bills, searchTerm, statusFilter])
-
-  // Aggregated summary metrics
-  const totalBilled = roundToCurrency(bills.reduce((sum, b) => sum + b.periodAmount, 0))
-  const totalVolume = roundToCurrency(bills.reduce((sum, b) => sum + b.totalLiters, 0))
-  const pendingCount = bills.filter((b) => b.status === 'Pending').length
+  }, [transactions, searchTerm])
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Breadcrumbs */}
-      <Breadcrumbs items={[{ label: 'Overview' }, { label: 'Billing' }]} />
+      <Breadcrumbs items={[{ label: 'Billing & Transactions' }]} />
 
-      {/* Header with Month Selector */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[#192342] sm:text-3xl">
-            Billing & Invoices
+            Platform Transactions & Billing
           </h1>
-          <p className="mt-0.5 text-xs text-[#64748B]">
-            Automated customer-wise milk billing calculation for {periodInfo.monthName}.
+          <p className="mt-1 text-sm text-[#64748B]">
+            Global financial ledger tracking distributor billing collections, customer monthly settlements, and transaction receipts.
           </p>
         </div>
 
-        {/* Period Selector Tabs */}
-        <div className="flex items-center gap-1.5 rounded-xl border border-[#EAE9F2] bg-white p-1 shadow-xs">
-          <Calendar className="ml-2 h-3.5 w-3.5 text-slate-400" />
-          <button
-            type="button"
-            onClick={() => setSelectedMonthOffset(0)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-              selectedMonthOffset === 0
-                ? 'bg-[#4768E8] text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Current Month
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedMonthOffset(-1)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-              selectedMonthOffset === -1
-                ? 'bg-[#4768E8] text-white shadow-xs'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Previous Month
-          </button>
-        </div>
+        <button
+          onClick={loadTransactions}
+          disabled={isLoading}
+          className="inline-flex items-center gap-2 rounded-xl border border-[#EAE9F2] bg-white px-4 py-2 text-xs font-semibold text-[#192342] shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+          Refresh Transactions
+        </button>
       </div>
 
-      {/* 4 Financial KPI Cards */}
+      {/* 4 Summary Stat Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Total Period Billed"
-          value={formatINR(totalBilled)}
-          subtitle={`Sum of all customer bills in ${periodInfo.shortMonth}`}
-          icon={<IndianRupee className="h-5 w-5" />}
+          title="Total Transactions"
+          value={summary.totalTransactions.toString()}
+          subtitle="Logged payments & receipts"
+          icon={<Receipt className="h-5 w-5" />}
           iconColor="blue"
         />
         <StatCard
-          title="Billed Customers"
-          value={customers.length.toString()}
-          subtitle="Active customer accounts"
-          icon={<CheckCircle2 className="h-5 w-5" />}
+          title="Payments Collected"
+          value={formatCompactINR(summary.totalReceivedAmount)}
+          subtitle="Total settlements received"
+          icon={<IndianRupee className="h-5 w-5" />}
           iconColor="green"
+          badgeText="Verified"
+          badgeVariant="success"
         />
         <StatCard
-          title="Total Milk Volume"
-          value={`${totalVolume.toFixed(1)} L`}
-          subtitle={`Aggregated milk volume (${periodInfo.daysInMonth} days)`}
-          icon={<Droplets className="h-5 w-5" />}
-          iconColor="teal"
+          title="Total Invoiced"
+          value={formatCompactINR(summary.totalBilledAmount)}
+          subtitle="Cumulative billing charges"
+          icon={<CreditCard className="h-5 w-5" />}
+          iconColor="purple"
         />
         <StatCard
-          title="Pending Invoices"
-          value={pendingCount.toString()}
-          subtitle={pendingCount === 0 ? 'All statements settled' : 'Need follow-up'}
-          icon={<Clock className="h-5 w-5" />}
-          iconColor={pendingCount > 0 ? 'amber' : 'green'}
+          title="Outstanding Balance"
+          value={formatINR(summary.totalOutstandingAmount)}
+          subtitle="Uncollected net balance"
+          icon={<IndianRupee className="h-5 w-5" />}
+          iconColor={summary.totalOutstandingAmount > 0 ? 'red' : 'green'}
+          badgeText={summary.totalOutstandingAmount > 0 ? 'Pending' : 'Settled'}
+          badgeVariant={summary.totalOutstandingAmount > 0 ? 'danger' : 'success'}
         />
       </div>
 
-      {/* Main Invoices Section */}
-      <div className="rounded-2xl border border-[#EAE9F2] bg-white p-5 shadow-sm">
-        {/* Controls Toolbar: Compact Search & Status Filters */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-1 flex-col gap-2.5 sm:flex-row sm:items-center">
-            {/* Compact Search Bar */}
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search invoice, customer or phone..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-9 w-full rounded-lg border border-[#E2E8F0] bg-slate-50/50 pl-9 pr-8 text-xs text-[#192342] placeholder:text-slate-400 transition-colors focus:border-[#4768E8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#4768E8]/10"
-              />
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Status Pills */}
-            <div className="flex items-center gap-1.5 text-xs">
-              <button
-                onClick={() => setStatusFilter('all')}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-                  statusFilter === 'all'
-                    ? 'bg-slate-200 text-[#192342]'
-                    : 'bg-slate-100 text-[#64748B] hover:bg-slate-200'
-                }`}
-              >
-                All ({bills.length})
-              </button>
-              <button
-                onClick={() => setStatusFilter('paid')}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-                  statusFilter === 'paid'
-                    ? 'bg-[#EBF7EE] text-[#1E8E42] ring-1 ring-[#1E8E42]/20'
-                    : 'bg-[#EBF7EE]/60 text-[#1E8E42] hover:bg-[#EBF7EE]'
-                }`}
-              >
-                Paid
-              </button>
-              <button
-                onClick={() => setStatusFilter('pending')}
-                className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-                  statusFilter === 'pending'
-                    ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-500/20'
-                    : 'bg-amber-50/60 text-amber-700 hover:bg-amber-50'
-                }`}
-              >
-                Pending
-              </button>
-            </div>
-          </div>
+      {/* Search Bar */}
+      <div className="flex items-center gap-3 rounded-2xl border border-[#EAE9F2] bg-white p-4 shadow-sm">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search by customer name, unique #, dairy name, period, or receipt ID..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded-xl border border-[#EAE9F2] bg-[#F8F7FB] py-2 pl-10 pr-4 text-xs text-[#192342] placeholder-slate-400 focus:border-[#4768E8] focus:bg-white focus:outline-none"
+          />
         </div>
+      </div>
 
-        {/* Invoices Table */}
-        <div className="mt-4 overflow-x-auto">
-          {isLoading && bills.length === 0 ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-6 w-6 animate-spin text-[#4768E8]" />
-            </div>
-          ) : filteredBills.length === 0 ? (
-            <div className="py-12 text-center text-xs text-[#64748B]">
-              No invoices match your search.
-            </div>
-          ) : (
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs font-medium text-[#DE3C4B]">
+          {error}
+        </div>
+      )}
+
+      {/* Transactions Table */}
+      <div className="overflow-hidden rounded-2xl border border-[#EAE9F2] bg-white shadow-sm">
+        {isLoading && transactions.length === 0 ? (
+          <div className="flex h-48 items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-[#4768E8]" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center">
+            <Receipt className="mx-auto h-10 w-10 text-slate-300" />
+            <h3 className="mt-3 text-sm font-bold text-[#192342]">No transactions found</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              {searchTerm
+                ? 'No matching payment records found for your search query.'
+                : 'No payments have been recorded yet.'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-[#EAE9F2] text-[11px] font-bold tracking-wider text-[#64748B] uppercase">
-                  <th className="pb-3 font-semibold">INVOICE NO.</th>
-                  <th className="pb-3 font-semibold">CUSTOMER</th>
-                  <th className="pb-3 font-semibold">PERIOD</th>
-                  <th className="pb-3 font-semibold">QUANTITY (L)</th>
-                  <th className="pb-3 font-semibold">RATE (₹/L)</th>
-                  <th className="pb-3 font-semibold">TOTAL PAYABLE</th>
-                  <th className="pb-3 font-semibold">STATUS</th>
-                  <th className="pb-3 text-right font-semibold">ACTIONS</th>
+              <thead className="border-b border-[#EAE9F2] bg-[#F8F7FB] text-slate-500 font-semibold">
+                <tr>
+                  <th className="px-6 py-3.5">Payment Date</th>
+                  <th className="px-6 py-3.5">Customer</th>
+                  <th className="px-6 py-3.5">Associated Dairy</th>
+                  <th className="px-6 py-3.5">Billing Period</th>
+                  <th className="px-6 py-3.5">Billed Amount</th>
+                  <th className="px-6 py-3.5">Amount Paid</th>
+                  <th className="px-6 py-3.5">Remaining Balance</th>
+                  <th className="px-6 py-3.5">Note / Memo</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#EAE9F2]">
-                {filteredBills.map((bill) => (
-                  <tr key={bill.id} className="group transition-colors hover:bg-slate-50/70">
-                    <td className="py-3 font-bold text-[#192342]">
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">
-                        {bill.billNumber}
-                      </span>
-                    </td>
-                    <td className="py-3 font-semibold text-[#192342]">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EBF7EE] text-xs font-bold text-[#1E8E42] border border-[#C5E8CE]">
-                          {bill.customerNumber}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-[#192342]">{bill.customerName}</p>
-                          <p className="text-[10px] text-slate-400">{bill.phoneNumber || 'No phone'}</p>
-                        </div>
+                {filtered.map((t) => (
+                  <tr key={t.id} className="hover:bg-slate-50/70 transition">
+                    <td className="px-6 py-4">
+                      <div className="font-bold text-[#192342]">{t.receivedDate}</div>
+                      <div className="text-[11px] font-mono text-slate-400">
+                        ID: {t.pid.slice(0, 8)}...
                       </div>
                     </td>
-                    <td className="py-3 text-[#64748B]">
-                      {bill.period}
+
+                    <td className="px-6 py-4">
+                      <Link
+                        to={`/customers/${t.customer?.cid}`}
+                        className="font-bold text-[#4768E8] hover:underline"
+                      >
+                        #{t.customer?.uniqueNumber} {t.customer?.name}
+                      </Link>
                     </td>
-                    <td className="py-3 font-semibold text-[#4768E8]">
-                      {bill.totalLiters.toFixed(1)} L
+
+                    <td className="px-6 py-4">
+                      <Link
+                        to={`/distributors/${t.distributor?.did}`}
+                        className="font-semibold text-slate-700 hover:text-[#4768E8]"
+                      >
+                        {t.distributor?.dairyName}
+                      </Link>
                     </td>
-                    <td className="py-3 font-medium text-[#192342]">
-                      ₹{bill.ratePerLiter.toFixed(2)}
+
+                    <td className="px-6 py-4 font-semibold text-slate-700">
+                      {t.period}
                     </td>
-                    <td className="py-3 font-bold text-[#192342]">
-                      {formatINR(bill.netPayable)}
+
+                    <td className="px-6 py-4 text-slate-600">
+                      {formatINR(t.billAmount)}
                     </td>
-                    <td className="py-3">
-                      <StatusBadge status={bill.status} />
+
+                    <td className="px-6 py-4 font-bold text-[#1E8E42]">
+                      {formatINR(t.receivedAmount)}
                     </td>
-                    <td className="py-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setActiveBillDetail(bill)}
-                          className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 transition-colors"
-                          title="View Bill Breakdown"
-                        >
-                          <FileText className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedCustomerForBill(bill.rawCustomer)}
-                          className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 transition-colors"
-                          title="Send Monthly WhatsApp Bill"
-                        >
-                          <MessageSquare className="h-4 w-4" />
-                        </button>
-                      </div>
+
+                    <td className="px-6 py-4 font-semibold text-slate-700">
+                      {formatINR(t.balance)}
+                    </td>
+
+                    <td className="px-6 py-4 text-slate-500">
+                      {t.note || 'Cash payment'}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
-      </div>
-
-      {/* Bill Breakdown Modal */}
-      {activeBillDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <button
-              onClick={() => setActiveBillDetail(null)}
-              className="absolute right-4 top-4 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-            >
-              <X className="h-4 w-4" />
-            </button>
-
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 font-bold">
-                <FileText className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[#192342]">{activeBillDetail.customerName}</h3>
-                <p className="text-xs text-[#64748B]">Invoice {activeBillDetail.billNumber} • {activeBillDetail.period}</p>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-3 rounded-xl bg-slate-50 p-4 text-xs">
-              <div className="flex justify-between py-1 border-b border-slate-200/60">
-                <span className="text-slate-500">Billing Period:</span>
-                <span className="font-semibold text-slate-800">{activeBillDetail.period}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-200/60">
-                <span className="text-slate-500">Agreed Daily Quota:</span>
-                <span className="font-semibold text-slate-800">{activeBillDetail.rawCustomer.liters} L / day</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-200/60">
-                <span className="text-slate-500">Total Month Milk:</span>
-                <span className="font-semibold text-[#4768E8]">{activeBillDetail.totalLiters.toFixed(1)} Liters</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-200/60">
-                <span className="text-slate-500">Applicable Rate:</span>
-                <span className="font-semibold text-slate-800">₹{activeBillDetail.ratePerLiter.toFixed(2)} / Liter</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-200/60">
-                <span className="text-slate-500">Period Amount (Qty × Rate):</span>
-                <span className="font-semibold text-slate-800">₹{activeBillDetail.periodAmount.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-200/60">
-                <span className="text-slate-500">Previous Outstanding Dues:</span>
-                <span className="font-semibold text-slate-800">₹{activeBillDetail.previousBalance.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between py-1.5 text-sm font-bold text-[#1E8E42]">
-                <span>Net Payable:</span>
-                <span>{formatINR(activeBillDetail.netPayable)}</span>
-              </div>
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveBillDetail(null)}
-                className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedCustomerForBill(activeBillDetail.rawCustomer)
-                  setActiveBillDetail(null)
-                }}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
-              >
-                <MessageSquare className="h-3.5 w-3.5" />
-                Send Statement via WhatsApp
-              </button>
-            </div>
           </div>
-        </div>
-      )}
-
-      {/* WhatsApp Bill Modal */}
-      <SendBillModal
-        customer={selectedCustomerForBill}
-        isOpen={!!selectedCustomerForBill}
-        onClose={() => setSelectedCustomerForBill(null)}
-      />
+        )}
+      </div>
     </div>
   )
 }

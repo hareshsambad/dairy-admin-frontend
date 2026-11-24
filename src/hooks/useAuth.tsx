@@ -22,10 +22,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initAuth = () => {
       const storedToken = authService.getToken();
       const storedUser = authService.getUser();
+      const role = (storedUser?.role || '').toLowerCase();
       
-      if (storedToken && storedUser) {
+      if (storedToken && storedUser && (role === 'admin' || role === 'super_admin')) {
         setToken(storedToken);
         setUser(storedUser);
+      } else if (storedToken || storedUser) {
+        authService.logout();
+        setToken(null);
+        setUser(null);
       }
       setIsLoading(false);
     };
@@ -35,6 +40,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (credentials: LoginRequest) => {
     const response = await authService.login(credentials);
+    const role = (response.user?.role || '').toLowerCase();
+    if (role !== 'admin' && role !== 'super_admin') {
+      authService.logout();
+      throw new Error('Access denied. This application is restricted to authorized administrators.');
+    }
     setToken(response.accessToken);
     setUser(response.user);
   };
@@ -46,8 +56,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.location.href = '/login';
   };
 
+  const isAuthed =
+    !!token &&
+    !!user &&
+    ((user.role || '').toLowerCase() === 'admin' ||
+      (user.role || '').toLowerCase() === 'super_admin');
+
   return (
-    <AuthContext.Provider value={{ user, token, isAuthenticated: !!token, login, logout, isLoading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        isAuthenticated: isAuthed,
+        login,
+        logout,
+        isLoading,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
