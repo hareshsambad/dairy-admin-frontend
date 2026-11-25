@@ -253,6 +253,7 @@ export function CustomersPage() {
                   <th className="px-6 py-3.5">Phone Number</th>
                   <th className="px-6 py-3.5">Daily Volume</th>
                   <th className="px-6 py-3.5">Milk Rate</th>
+                  <th className="px-6 py-3.5">Balance Status</th>
                   <th className="px-6 py-3.5">Status</th>
                   <th className="px-6 py-3.5 text-right">Actions</th>
                 </tr>
@@ -292,6 +293,22 @@ export function CustomersPage() {
 
                     <td className="px-6 py-4 font-semibold text-slate-700">
                       ₹{c.price.toFixed(2)} / L
+                    </td>
+
+                    <td className="px-6 py-4">
+                      {Number((c as any).netBalanceDue ?? 0) > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#FEECEE] px-2.5 py-0.5 text-[11px] font-bold text-[#DE3C4B]">
+                          Due: ₹{Number((c as any).netBalanceDue).toFixed(2)}
+                        </span>
+                      ) : Number((c as any).netAdvance ?? 0) > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#EBF7EE] px-2.5 py-0.5 text-[11px] font-bold text-[#1E8E42]">
+                          Advance: ₹{Number((c as any).netAdvance).toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-600">
+                          Settled (₹0)
+                        </span>
+                      )}
                     </td>
 
                     <td className="px-6 py-4">

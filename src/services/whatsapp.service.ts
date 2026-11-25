@@ -138,7 +138,11 @@ export const whatsappService = {
     }>('/whatsapp/send-bill', {
       ...payload,
       useTemplate: true,
-      templateName: payload.templateName || 'dairy_milk_bill_update',
+      templateName:
+        payload.templateName ||
+        (payload.type === 'monthly'
+          ? 'monthly_milk_bill_settlement'
+          : 'daily_milk_delivery_update'),
       languageCode: payload.languageCode || 'en',
     });
     return {
